@@ -1,0 +1,84 @@
+version: "3.9"
+
+services:
+  mongo:
+    image: mongo:7
+    container_name: cloud-mongo
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - monitoring_net
+
+  api-service:
+    build:
+      context: ./api-service
+    container_name: cloud-api
+    depends_on:
+      - mongo
+    environment:
+      - API_PORT=3000
+      - MONGO_URI=mongodb://mongo:27017/cloud_monitoring
+    ports:
+      - "3000:3000"
+    networks:
+      - monitoring_net
+
+  metrics-agent:
+    build:
+      context: ./metrics-agent
+    container_name: metrics-agent
+    environment:
+      - METRICS_AGENT_PORT=9100
+      - SCRAPE_INTERVAL_SECONDS=5
+    ports:
+      - "9100:9100"
+    networks:
+      - monitoring_net
+
+  prometheus:
+    image: prom/prometheus:v2.51.2
+    container_name: prometheus
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+    ports:
+      - "9090:9090"
+    networks:
+      - monitoring_net
+
+  grafana:
+    image: grafana/grafana:11.0.0
+    container_name: grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    depends_on:
+      - prometheus
+    ports:
+      - "3001:3000"
+    networks:
+      - monitoring_net
+
+  node-exporter:
+    image: prom/node-exporter:v1.8.1
+    container_name: node-exporter
+    pid: "host"
+    restart: unless-stopped
+    command:
+      - "--path.rootfs=/host"
+    volumes:
+      - "/:/host:ro,rslave"
+    ports:
+      - "9101:9100"
+    networks:
+      - monitoring_net
+
+networks:
+  monitoring_net:
+    driver: bridge
+
+volumes:
+  mongo-data:
+
